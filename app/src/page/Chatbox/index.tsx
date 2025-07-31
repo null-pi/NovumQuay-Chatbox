@@ -1,10 +1,24 @@
-import { Box, Textarea, Text, IconButton } from "@chakra-ui/react";
+import { Box, Textarea, Text, IconButton, Flex } from "@chakra-ui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { IoSend } from "react-icons/io5";
+import { MdCancelScheduleSend } from "react-icons/md";
+import ChatBubble from "../../component/ChatBubble";
+
+
+interface Message {
+    providedBy: 'user' | 'system',
+    messageType: 'text' | 'image',
+    content: string
+}
+
 
 const Chatbox = () => {
-    const [prompt, setPrompt] = useState<string>("");
-    const [messages, setMessages] = useState<string[]>([]);
+    const [prompt, setPrompt] = useState<Message>({
+        providedBy: 'user',
+        messageType: 'text',
+        content: ''
+    });
+    const [messages, setMessages] = useState<Message[]>([]);
     const [isConnected, setIsConnected] = useState<boolean>(false);
 
     const clientId = "user123";
@@ -12,8 +26,6 @@ const Chatbox = () => {
 
     const wsRef = useRef<WebSocket | null>(null);
     const reconnectIntervalRef = useRef<number | null>(null);
-
-    console.log(isConnected)
 
     const connectWebSocket = useCallback(() => {
         if (wsRef.current) {
@@ -34,7 +46,11 @@ const Chatbox = () => {
         wsRef.current.onmessage = (event) => {
             const data = JSON.parse(event.data);
             console.log("Message received:", data);
-            // Handle incoming messages here
+
+            setMessages((prevMessages) => [
+                ...prevMessages,
+                { ...data }
+            ]);
         };
 
         wsRef.current.onclose = (event) => {
@@ -58,7 +74,7 @@ const Chatbox = () => {
 
     useEffect(() => {
         connectWebSocket();
-        
+
         return () => {
             if (wsRef.current) {
                 wsRef.current.close();
@@ -70,9 +86,16 @@ const Chatbox = () => {
     }, [connectWebSocket]);
 
     const sendMessage = () => {
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN && prompt.trim()) {
-            wsRef.current.send(JSON.stringify({ message: prompt.trim() }));
-            setPrompt("");
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN && prompt.content.trim()) {
+            console.log("Sending message:", [...messages, prompt]);
+
+            wsRef.current.send(JSON.stringify([...messages, prompt]));
+
+            setPrompt({
+                providedBy: 'user',
+                messageType: 'text',
+                content: ''
+            });
         } else {
             console.error("WebSocket is not open or message is empty");
             // Optionally, you can show an error message to the user
@@ -81,30 +104,47 @@ const Chatbox = () => {
     }
 
     const handleSendMessage = () => {
-        // Logic to handle sending the message
-        console.log("Message sent:", prompt);
-        sendMessage();
-
         setMessages([...messages, prompt]);
-        setPrompt("");
+        sendMessage();
     };
 
     return (
-        <Box
-            display="flex"
-            flexDirection="column"
+        <Flex
+            direction="column"
             h="100vh"
             p="2rem 10rem"
         >
-            <Text
-                flex="1"
-                fontSize="5xl"
-                fontWeight="bold"
-                alignContent="center"
-                textAlign="center"
-            >
-                Hello User!!
-            </Text>
+            {
+                messages.length === 0 ?
+                    <Text
+                        flex="1"
+                        fontSize="5xl"
+                        fontWeight="bold"
+                        alignContent="center"
+                        textAlign="center"
+                    >
+                        Hello User!!
+                    </Text> :
+                    <Box
+                        flex="1"
+                    >
+                        {
+                            messages.map((message, index) => (
+                                <ChatBubble
+                                    key={index}
+                                    isSender={message.providedBy === 'user'}
+                                >
+                                    {message.messageType === 'text' ? (
+                                        <Text fontSize="lg">{message.content}</Text>
+                                    ) : (
+                                        <img src={message.content} alt="Chat Image" style={{ maxWidth: '100%' }} />
+                                    )}
+                                </ChatBubble>
+                            ))
+                        }
+                    </Box>
+            }
+
 
             <Box
                 display="flex"
@@ -129,8 +169,8 @@ const Chatbox = () => {
                     _focus={{
                         outline: "none"
                     }}
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
+                    value={prompt.content}
+                    onChange={(e) => setPrompt({ ...prompt, content: e.target.value })}
                     onKeyDown={(e) => {
                         if (e.key === "Enter" && !e.shiftKey) {
                             e.preventDefault();
@@ -147,10 +187,10 @@ const Chatbox = () => {
                     bgColor="transparent"
                     onClick={handleSendMessage}
                 >
-                    <IoSend />
+                    {isConnected ? <IoSend /> : <MdCancelScheduleSend />}
                 </IconButton>
             </Box>
-        </Box>
+        </Flex>
     );
 };
 
